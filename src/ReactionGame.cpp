@@ -1,8 +1,8 @@
 #include "ReactionGame.h"
 
-// --- DESENHOS DA MATRIZ (0 = Apagado, 1 = Aceso) ---
+// --- Matrix Bitmaps (0=Off, 1=On) ---
 
-// Desenho: "P1"
+// Frame: "P1" Winner
 uint8_t frame_p1[8][12] = {
   {0,0,0,0,0,0,0,0,0,0,0,0},
   {0,1,1,1,0,0,0,0,1,1,0,0},
@@ -14,7 +14,7 @@ uint8_t frame_p1[8][12] = {
   {0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Desenho: "P2"
+// Frame: "P2" Winner
 uint8_t frame_p2[8][12] = {
   {0,0,0,0,0,0,0,0,0,0,0,0},
   {0,1,1,1,0,0,0,1,1,1,0,0},
@@ -26,7 +26,7 @@ uint8_t frame_p2[8][12] = {
   {0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Desenho: "!" (GO)
+// Frame: "!" (GO Signal)
 uint8_t frame_go[8][12] = {
   {0,0,0,0,0,1,1,0,0,0,0,0},
   {0,0,0,0,0,1,1,0,0,0,0,0},
@@ -38,7 +38,7 @@ uint8_t frame_go[8][12] = {
   {0,0,0,0,0,1,1,0,0,0,0,0}
 };
 
-// Desenho: "X" (Falta/Foul)
+// Frame: "X" (Foul/False Start)
 uint8_t frame_foul[8][12] = {
   {0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,1,0,0,0,0,0,0,1,0,0},
@@ -50,16 +50,18 @@ uint8_t frame_foul[8][12] = {
   {0,0,1,0,0,0,0,0,0,1,0,0}
 };
 
-// Constructor: Initializes the internal references and pins
+// --- Constructor ---
 ReactionGame::ReactionGame(LiquidCrystal& lcdRef, int p1Pin, int p2Pin, int selPin)
     : lcd(lcdRef), player1Pin(p1Pin), player2Pin(p2Pin), selectButtonPin(selPin) {}
 
+// --- Initialization & Control ---
+
 void ReactionGame::begin() {
-    matrix.begin(); // Inicializa hardware da matriz
+    matrix.begin(); 
 }
 
 void ReactionGame::stop() {
-    clearMatrix(); // Limpa visualmente ao sair
+    clearMatrix(); 
 }
 
 void ReactionGame::clearMatrix() {
@@ -69,114 +71,111 @@ void ReactionGame::clearMatrix() {
 }
 
 void ReactionGame::setup() {
-    // Setup pins (though done in main, harmless to repeat)
+    // Pin Setup
     pinMode(player1Pin, INPUT);
     pinMode(player2Pin, INPUT);
     pinMode(selectButtonPin, INPUT);
 
-    // Create custom characters
-    lcd.createChar(0, p1Char); // P1 indicator
-    lcd.createChar(1, p2Char); // P2 indicator
+    // Char Setup
+    lcd.createChar(0, p1Char); 
+    lcd.createChar(1, p2Char); 
 
-    // Display introductory message
+    // Intro UI
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("REACTION GAME");
     drawInstructions();
     
-    // Limpa matriz ao iniciar
     clearMatrix();
-    
     delay(1500);
 
     resetGame();
 }
 
 void ReactionGame::resetGame() {
-    // Generate a random delay (e.g., 2000ms to 5000ms)
-    randomSeed(analogRead(A1)); // Seed randomizer
+    // Randomize Delay
+    randomSeed(analogRead(A1)); 
     goDelayMs = random(2000, 5000);
 
+    // Reset State
     winner = 0;
     reactionTime = 0;
     currentState = COUNTDOWN;
     startTime = millis();
     lastTime = millis();
     
-    // Segurança: Impede faltas imediatas se o botão ainda estiver pressionado do jogo anterior
+    // Safety Flags
     buttonsReleased = false;
 
+    // Reset UI
     lcd.clear();
-    clearMatrix(); // Garante matriz limpa no reset
+    clearMatrix(); 
 }
 
 void ReactionGame::drawInstructions() {
-    // Clear instructions to show P1 vs P2 pins
     lcd.setCursor(0, 1);
     lcd.print("P1:6 vs P2:7");
 }
 
+// --- Game Logic States ---
+
 void ReactionGame::stateCountdown() {
-    // 1. Fase de Segurança: Espera soltar os botões antes de começar
+    // 1. Safety Phase: Wait for buttons release
     if (!buttonsReleased) {
         if (digitalRead(player1Pin) == LOW && digitalRead(player2Pin) == LOW) {
             buttonsReleased = true;
-            startTime = millis(); // Reinicia a contagem do tempo aleatório apenas AGORA
+            startTime = millis(); // Start timer now
             lcd.setCursor(0, 0);
             lcd.print("Ready...      ");
         } else {
-            // Mostra mensagem para soltar botão se demorar muito
             if (millis() - lastTime > 500) {
                 lcd.setCursor(0, 0);
                 lcd.print("Release Btn!  ");
                 lastTime = millis();
             }
         }
-        return; // Não faz nada enquanto não soltar
+        return; 
     }
 
-    // 2. Lógica Normal de Jogo
+    // 2. Gameplay Phase
     unsigned long elapsed = millis() - startTime;
 
-    // Check for premature press (Foul)
+    // Check False Start (P1)
     if (digitalRead(player1Pin) == HIGH) {
-        winner = 2; // P1 pressed too early, P2 wins
-        reactionTime = 0; // Indicate foul
-        matrix.renderBitmap(frame_foul, 8, 12); // Matriz: Mostra X
+        winner = 2; // P2 Wins
+        reactionTime = 0; 
+        matrix.renderBitmap(frame_foul, 8, 12); 
         
-        canRestart = false; // Bloqueia restart imediato
+        canRestart = false; 
         currentState = FINISHED;
         return;
     }
+    // Check False Start (P2)
     if (digitalRead(player2Pin) == HIGH) {
-        winner = 1; // P2 pressed too early, P1 wins
-        reactionTime = 0; // Indicate foul
-        matrix.renderBitmap(frame_foul, 8, 12); // Matriz: Mostra X
+        winner = 1; // P1 Wins
+        reactionTime = 0; 
+        matrix.renderBitmap(frame_foul, 8, 12); 
         
-        canRestart = false; // Bloqueia restart imediato
+        canRestart = false; 
         currentState = FINISHED;
         return;
     }
 
-    // Check if the delay time is reached
+    // Check Trigger Time
     if (elapsed >= goDelayMs) {
         currentState = GO;
-        startTime = millis(); // Reset startTime for reaction time measurement
+        startTime = millis(); 
         lcd.clear();
-        
-        // --- Matriz Feature: Visual GO ---
-        matrix.renderBitmap(frame_go, 8, 12); // Mostra "!" na matriz
-        
+        matrix.renderBitmap(frame_go, 8, 12); // Visual GO
         return;
     }
 
-    // Update display every 500ms
+    // Update UI (Countdown)
     if (millis() - lastTime > 500) {
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("Ready...");
 
-        // Show approximate countdown timer
         int secondsLeft = (goDelayMs - elapsed) / 1000 + 1;
         lcd.setCursor(0, 1);
         lcd.print("Wait for GO!");
@@ -186,7 +185,7 @@ void ReactionGame::stateCountdown() {
 }
 
 void ReactionGame::stateGo() {
-    // Flash GO message
+    // Flash GO Message
     static unsigned long lastDisplayed = 0;
     if (millis() - lastDisplayed > 200) {
         lcd.clear();
@@ -195,24 +194,24 @@ void ReactionGame::stateGo() {
         lastDisplayed = millis();
     }
 
-    // Check for P1 Press
+    // Check P1 Win
     if (digitalRead(player1Pin) == HIGH) {
         reactionTime = millis() - startTime;
         winner = 1;
-        matrix.renderBitmap(frame_p1, 8, 12); // Matriz: Vencedor P1
+        matrix.renderBitmap(frame_p1, 8, 12); 
         
-        canRestart = false; // OBRIGATÓRIO: Bloqueia restart pois o botão está apertado
+        canRestart = false; 
         currentState = FINISHED;
         return;
     }
 
-    // Check for P2 Press
+    // Check P2 Win
     if (digitalRead(player2Pin) == HIGH) {
         reactionTime = millis() - startTime;
         winner = 2;
-        matrix.renderBitmap(frame_p2, 8, 12); // Matriz: Vencedor P2
+        matrix.renderBitmap(frame_p2, 8, 12); 
         
-        canRestart = false; // Bloqueia restart por segurança
+        canRestart = false; 
         currentState = FINISHED;
         return;
     }
@@ -221,27 +220,27 @@ void ReactionGame::stateGo() {
 void ReactionGame::stateFinished() {
     static unsigned long lastDisplayed = 0;
     
-    // --- Lógica de Segurança do Restart ---
-    // Verifica se o botão de Select (que pode ser o P1) foi solto
+    // --- Restart Safety Logic ---
     if (!canRestart) {
         if (digitalRead(selectButtonPin) == LOW) {
-            canRestart = true; // Botão solto, agora pode aceitar comando de restart
+            canRestart = true; // Button released, ready for input
         }
     }
     
-    // Logica de Restart (Botão Select) - SÓ FUNCIONA SE canRestart FOR TRUE
+    // Check Restart Command
     if (canRestart && digitalRead(selectButtonPin) == HIGH) {
         lcd.clear();
         lcd.print("Restarting...");
-        delay(500); // Debounce
+        delay(500); 
         resetGame();
         return;
     }
 
-    // Update display text every 2 seconds to alternate info
+    // Toggle UI Info
     if (millis() - lastDisplayed > 2000) {
         lcd.clear();
         
+        // Line 0: Result
         lcd.setCursor(0, 0);
         if (reactionTime > 0) {
             if (winner == 1) lcd.print("P1 Wins! ");
@@ -252,12 +251,12 @@ void ReactionGame::stateFinished() {
             lcd.print("FOUL! Opp. Wins");
         }
         
+        // Line 1: Instructions
         lcd.setCursor(0, 1);
         static bool toggle = false;
         toggle = !toggle;
         
         if (toggle) {
-            // Se ainda não pode reiniciar (botão preso), avisa para soltar
             if (!canRestart && winner == 1) { 
                 lcd.print("Release Btn P1");
             } else {
@@ -271,18 +270,12 @@ void ReactionGame::stateFinished() {
     }
 }
 
+// --- Main Loop ---
 void ReactionGame::run() {
     switch (currentState) {
-        case WAITING:
-            break;
-        case COUNTDOWN:
-            stateCountdown();
-            break;
-        case GO:
-            stateGo();
-            break;
-        case FINISHED:
-            stateFinished();
-            break;
+        case WAITING:   break;
+        case COUNTDOWN: stateCountdown(); break;
+        case GO:        stateGo();        break;
+        case FINISHED:  stateFinished();  break;
     }
 }

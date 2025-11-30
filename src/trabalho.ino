@@ -1,7 +1,7 @@
 #include <LiquidCrystal.h>
 #include "DinoGame.h"
 #include "ReactionGame.h"
-#include "BlockBreaker.h" // INCLUIR O NOVO JOGO
+#include "BlockBreaker.h"
 #include "GameMusic.h"
 
 // --- Hardware Setup ---
@@ -23,7 +23,7 @@ const int player2Pin = 7;      // Reaction Game P2
 // DinoGame (Uses LCD + Pin 6)
 DinoGame dinoGame(lcd, selectButtonPin);
 
-// ReactionGame (ATUALIZADO: Agora recebe selectButtonPin também)
+// ReactionGame (Uses LCD + LED Matrix + Pins 6,7 + Select Button)
 ReactionGame reactionGame(lcd, player1Pin, player2Pin, selectButtonPin);
 
 // BlockBreaker (Uses LCD + LED Matrix + Pot A5 + Pin 6)
@@ -37,7 +37,7 @@ enum AppState {
     MENU,
     RUNNING_DINO,
     RUNNING_REACTION,
-    RUNNING_BLOCKS, // Novo Estado
+    RUNNING_BLOCKS,
     ABOUT_SCREEN
 };
 AppState currentState = MENU;
@@ -106,22 +106,21 @@ void handleSelection() {
         lastDebounceTime = millis();
 
         switch (currentSelection) {
-            case 0: // Dino Game
+            case 0: // Dinossaur Jumper
                 currentState = RUNNING_DINO;
                 gameMusic.startPacmanIntro();
                 dinoGame.setup();
                 break;
                 
-            case 1: // Reaction Game
+            case 1: // Reaction Duel
                 currentState = RUNNING_REACTION;
                 gameMusic.startPacmanIntro();
                 reactionGame.setup();
                 break;
                 
-            case 2: // Matrix Blocks (NOVO)
+            case 2: // Brick Breaker
                 currentState = RUNNING_BLOCKS;
                 gameMusic.startPacmanIntro();
-                // IMPORTANTE: Mantive blockBreaker.start() 
                 blockBreaker.start(); 
                 break;
                 
@@ -133,13 +132,14 @@ void handleSelection() {
     }
 }
 
+// ABOUT INFO SCREEN
 void drawAboutScreen() {
     lcd.setCursor(0, 0);
     lcd.print("HOME MADE 'GAMEBOY'"); 
     lcd.setCursor(0, 1);
     lcd.print("By Diegos e Kaique");
 
-    if (digitalRead(selectButtonPin) == HIGH && (millis() - lastDebounceTime > debounceDelay)) {
+    if ((digitalRead(exitButtonPin) == HIGH || digitalRead(selectButtonPin) == HIGH) && (millis() - lastDebounceTime > debounceDelay)) {
         lastDebounceTime = millis();
         currentState = MENU;
         lcd.clear();
@@ -157,10 +157,6 @@ void setup() {
     pinMode(player2Pin, INPUT);
     pinMode(buzzerPin, OUTPUT);
 
-    // IMPORTANTE: Inicializa o hardware da matriz UMA VEZ aqui
-    // Se blockBreaker.begin() já chama matrix.begin(), tecnicamente não precisa chamar 
-    // reactionGame.begin() se ambos usam a mesma lib singleton, mas é boa prática
-    // garantir que pelo menos um chame.
     blockBreaker.begin();
     reactionGame.begin();
 
@@ -191,12 +187,11 @@ void loop() {
             if (digitalRead(exitButtonPin) == HIGH && (millis() - lastDebounceTime > debounceDelay)) {
                 lastDebounceTime = millis();
                 
-                // --- FIX: Limpar Matriz ao Sair ---
                 if (currentState == RUNNING_BLOCKS) {
                     blockBreaker.stop();
                 }
                 if (currentState == RUNNING_REACTION) {
-                    reactionGame.stop(); // Limpa matriz do ReactionGame também
+                    reactionGame.stop();
                 }
                 
                 currentState = MENU;
